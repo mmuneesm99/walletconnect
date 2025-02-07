@@ -1,32 +1,32 @@
 <template>
   <div class="container bg-green-900/20 w-screen max-w-lg mx-auto p-8">
     <h2 class="text-xl font-bold text-center mb-8 text-gray-200">Wallet Connect</h2>
-    
-    <!-- Input field for WalletConnect URI -->
-    <div class="mb-6">
-      <input v-model="walletUri" placeholder="Enter WalletConnect URI" class="p-4 rounded-lg w-full bg-white opacity-50 focus:outline-none focus:ring focus:ring-blue-400 text-gray-800 backdrop-blur-sm" />
+
+    <div v-if="!walletUri" class="mb-6">
+      <StreamBarcodeReader @decode="onDecode" @loaded="onLoaded"></StreamBarcodeReader>
     </div>
-    
-    <!-- Connect and Disconnect Buttons -->
+    <div class="mb-6">
+      <input v-model="walletUri" placeholder="Enter WalletConnect URI"
+        class="p-4 rounded-lg w-full bg-white opacity-50 focus:outline-none focus:ring focus:ring-blue-400 text-gray-800 backdrop-blur-sm" />
+    </div>
+
     <div class="flex justify-center space-x-4 mb-8">
-      <button @click="connectWithUri" :disabled="!walletUri" class="bg-blue-500 w-full text-white p-3 whitespace-nowrap rounded-lg hover:bg-blue-600 focus:outline-none disabled:bg-gray-500">
+      <button @click="connectWithUri" :disabled="!walletUri"
+        class="bg-blue-500 w-full text-white p-3 whitespace-nowrap rounded-lg hover:bg-blue-600 focus:outline-none disabled:bg-gray-500">
         Connect Wallet
       </button>
-      <button @click="disconnectWallet" v-if="walletConnected" class="bg-red-500 text-white p-3 rounded-lg w-32 hover:bg-red-600 focus:outline-none">
+      <button @click="disconnectWallet" v-if="walletConnected"
+        class="bg-red-500 text-white p-3 rounded-lg w-32 hover:bg-red-600 focus:outline-none">
         Disconnect
       </button>
     </div>
-    
-    <!-- Display Wallet Info -->
+
     <div v-if="walletConnected" class="w-full max-w-lg mx-auto p-6 border rounded-lg shadow-lg bg-white">
       <h3 class="text-2xl font-semibold mb-4 text-blue-600">Wallet Details:</h3>
       <p><strong>Wallet Address:</strong> <span class="text-blue-600">{{ walletAddress }}</span></p>
       <p><strong>Namespace:</strong> <span class="text-gray-700">{{ namespace }}</span></p>
-      <p><strong>Session Details:</strong></p>
-      <!-- <pre class="bg-gray-100 p-4 rounded-lg overflow-x-auto">{{ sessionDetails }}</pre> -->
     </div>
-    
-    <!-- Display Error Messages -->
+
     <div v-if="errorMessage" class="mt-6 text-red-500 text-center">
       <strong>Error:</strong> {{ errorMessage }}
     </div>
@@ -37,24 +37,15 @@
 import { Core } from '@walletconnect/core';
 import { WalletKit } from '@reown/walletkit';
 import { buildApprovedNamespaces, getSdkError } from '@walletconnect/utils';
-
-const core = new Core({
-  projectId: '4f88dfdcec8f22c4e7ea1368c35eba3b', // Replace with your actual project ID
-});
-
-const walletKit = await WalletKit.init({
-  core,
-  metadata: {
-    name: 'My Vue App',
-    description: 'A Vue.js app with manual WalletConnect URI',
-    url: 'https://my-vue-app.com',
-    icons: [],
-  },
-});
+import { StreamBarcodeReader } from "vue-barcode-reader";
 
 export default {
+  components: {
+    StreamBarcodeReader,
+  },
   data() {
     return {
+      walletKit: null,
       walletUri: '',
       walletConnected: false,
       walletAddress: null,
@@ -69,6 +60,13 @@ export default {
     },
   },
   methods: {
+    onDecode(text) {
+      console.log(`Decoded text from QR code: ${text}`);
+      this.walletUri = text;
+    },
+    onLoaded() {
+      console.log(`Ready to start scanning barcodes`);
+    },
     async onSessionProposal({ id, params }) {
       try {
         const approvedNamespaces = buildApprovedNamespaces({
@@ -86,9 +84,7 @@ export default {
           },
         });
 
-        const session = await walletKit.approveSession({ id, namespaces: approvedNamespaces });
-        console.log('Approved session:', session);
-        
+        const session = await this.walletKit.approveSession({ id, namespaces: approvedNamespaces });
         if (session) {
           this.walletAddress = session.accounts ? session.accounts[0] : null;
           this.namespace = session.namespaces;
@@ -99,15 +95,13 @@ export default {
       } catch (error) {
         console.error('Error during session proposal handling:', error.message);
         this.errorMessage = 'Session proposal rejected or error occurred.';
-        await walletKit.rejectSession({ id: params.id, reason: getSdkError('USER_REJECTED') });
+        await this.walletKit.rejectSession({ id: params.id, reason: getSdkError('USER_REJECTED') });
       }
     },
     async connectWithUri() {
       try {
         if (!this.walletUri) return;
-
-        const session = await walletKit.pair({ uri: this.walletUri });
-
+        const session = await this.walletKit.pair({ uri: this.walletUri });
         if (session) {
           this.walletAddress = session.accounts ? session.accounts[0] : null;
           this.namespace = session.namespaces;
@@ -124,12 +118,11 @@ export default {
     },
     async disconnectWallet() {
       try {
-        const activeSessions = walletKit.getActiveSessions();
+        const activeSessions = this.walletKit.getActiveSessions();
         if (activeSessions.length > 0) {
           const session = activeSessions[0];
-          await walletKit.disconnect({ topic: session.topic });
+          await this.walletKit.disconnect({ topic: session.topic });
         }
-
         this.walletConnected = false;
         this.walletAddress = null;
         this.session = null;
@@ -140,15 +133,27 @@ export default {
     },
     async getActiveSessions() {
       try {
-        const activeSessions = walletKit.getActiveSessions();
+        const activeSessions = this.walletKit.getActiveSessions();
         console.log('Active sessions:', activeSessions);
       } catch (error) {
         console.error('Error getting active sessions:', error.message);
       }
     },
   },
-  created() {
-    walletKit.on('session_proposal', this.onSessionProposal);
+  async created() {
+    const core = new Core({
+      projectId: '4f88dfdcec8f22c4e7ea1368c35eba3b', // Replace with actual project ID
+    });
+    this.walletKit = await WalletKit.init({
+      core,
+      metadata: {
+        name: 'My Vue App',
+        description: 'A Vue.js app with manual WalletConnect URI',
+        url: 'https://my-vue-app.com',
+        icons: [],
+      },
+    });
+    this.walletKit.on('session_proposal', this.onSessionProposal);
     this.getActiveSessions();
   },
 };
@@ -161,13 +166,5 @@ export default {
   text-align: center;
   border-radius: 10px;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-}
-
-pre {
-  background-color: #f7f7f7;
-  padding: 10px;
-  border-radius: 8px;
-  white-space: pre-wrap;
-  word-wrap: break-word;
 }
 </style>
