@@ -1,13 +1,14 @@
 <template>
-  <div class="container bg-green-900/20 w-screen max-w-lg mx-auto p-8">
+  <div class="container bg-green-900/20 w-screen max-w-xl mx-auto p-8">
     <h2 class="text-xl font-bold text-center mb-8 text-gray-200">Wallet Connect</h2>
 
-    <div v-if="!walletUri" class="mb-6">
+    <div v-if="!walletUri && isOpenQR" class="mb-6">
       <StreamBarcodeReader @decode="onDecode" @loaded="onLoaded"></StreamBarcodeReader>
     </div>
-    <div class="mb-6">
+    <div class="mb-6 flex gap-5">
       <input v-model="walletUri" placeholder="Enter WalletConnect URI"
-        class="p-4 rounded-lg w-full bg-white opacity-50 focus:outline-none focus:ring focus:ring-blue-400 text-gray-800 backdrop-blur-sm" />
+        class="p-2 rounded-lg w-full bg-white opacity-50 focus:outline-none focus:ring focus:ring-blue-400 text-gray-800 backdrop-blur-sm" />
+      <button @click="isOpenQR = !isOpenQR" class="bg-blue-900 whitespace-nowrap text-white p-3 rounded-lg  hover:bg-blue-800 focus:outline-none">Scan QR</button>
     </div>
 
     <div class="flex justify-center space-x-4 mb-8">
@@ -21,12 +22,30 @@
       </button>
     </div>
 
-    <div v-if="walletConnected" class="w-full max-w-lg mx-auto p-6 border rounded-lg shadow-lg bg-white">
+    <div v-if="walletConnected" class="w-full max-w-xl mx-auto p-6 border rounded-lg shadow-lg bg-white">
       <h3 class="text-2xl font-semibold mb-4 text-blue-600">Wallet Details:</h3>
       <p><strong>Wallet Address:</strong> <span class="text-blue-600">{{ walletAddress }}</span></p>
       <p><strong>Namespace:</strong> <span class="text-gray-700">{{ namespace }}</span></p>
     </div>
+    <div class="w-full max-w-xl mx-auto p-6 border relative rounded-lg shadow-lg bg-white mb-8">
+      <h3 class="text-2xl font-semibold mb-4 text-gray-800">Active Sessions:</h3>
+      <ul class="space-y-4 relative">
+        <li v-for="(session, sessionId) in activeSessions" :key="sessionId" class="p-4 text-clip bg-gray-50 rounded-lg shadow-sm">
+          <!-- Session ID -->
+          <p class="text-xs font-mono font-medium text-black">Session ID: {{ sessionId }}</p>
 
+          <!-- Relay Protocol -->
+          <p class="text-gray-700">
+            <span class="font-semibold">Relay Protocol:</span> {{ session.relay.protocol }}
+          </p>
+          <!-- Disconnect Button -->
+          <button @click="disconnectSession(session.topic)"
+            class="bg-red-500 text-white p-2 rounded-lg mt-4 hover:bg-red-600 focus:outline-none">
+            Disconnect Session
+          </button>
+        </li>
+      </ul>
+    </div>
     <div v-if="errorMessage" class="mt-6 text-red-500 text-center">
       <strong>Error:</strong> {{ errorMessage }}
     </div>
@@ -52,6 +71,8 @@ export default {
       session: null,
       namespace: null,
       errorMessage: null,
+      activeSessions: [],
+      isOpenQR: false,
     };
   },
   computed: {
@@ -134,12 +155,21 @@ export default {
     async getActiveSessions() {
       try {
         const activeSessions = this.walletKit.getActiveSessions();
+        this.activeSessions = activeSessions;
         console.log('Active sessions:', activeSessions);
       } catch (error) {
         console.error('Error getting active sessions:', error.message);
       }
     },
   },
+  async disconnectSession(topic) {
+      try {
+        await walletKit.disconnectSession({ topic });
+        this.getActiveSessions(); // Refresh the active sessions list
+      } catch (error) {
+        console.error('Error disconnecting session:', error);
+      }
+    },
   async created() {
     const core = new Core({
       projectId: '4f88dfdcec8f22c4e7ea1368c35eba3b', // Replace with actual project ID
